@@ -1,0 +1,156 @@
+#! /usr/bin/env bash
+
+MY_GIT_REPO=http://git.apache.org/accumulo.git/
+MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
+MY_RC_PROJECT=orgapacheaccumulo
+
+# Usage: $0 <candidateNumber>
+function main() {
+  local cnum
+  [ -n "$1" ] && local cnum=$1
+  while [ -z "$cnum" ]; do
+    read -p 'Enter the staging repository number: ' cnum
+  done
+  local candidate=$MY_RC_PROJECT-$cnum
+
+  # must in in slash or wget gets confused with --no-parent
+  local url=$MY_STAGING_REPO_BASE/$candidate/
+  local tmpdir=/tmp/$USER-$candidate
+
+  (mkdir --parents $tmpdir/download && cd $tmpdir && download $url && verify)
+}
+
+function green() { echo -e '\e[0;32m'$@'\e[0m'; }
+function yellow() { echo -e '\e[0;33m'$@'\e[0m'; }
+function red() { echo -e '\e[0;31m'$@'\e[0m'; }
+
+# Usage: echo $(outof <expected> <actual>)
+function outof() {
+  [ -z "$1" ] || [ -z "$2" ] || [ -n "$3" ] && red BUG-IN-SCRIPT && return 1
+  local color=green; [ "$1" = "$2" ] || local color=red
+  echo $($color $2)/$(yellow $1)
+}
+
+# Usage: printHashSummary sha1|md5 <expectedHashes>
+function printHashSummary() {
+  local type=${1,,}
+  local expected=$2
+  local actual=$(wc -l <${type^^}SUM)
+  local verified=$(${type}sum -c ${type^^}SUM 2>/dev/null| grep 'OK$' | wc -l)
+  echo -n Found $(outof $expected $actual) ${type} hashes.' '
+  echo Verified $(outof $actual $verified).
+}
+
+# Usage: download <url>
+function download() {
+  local url=$1
+  if [ ! -e .download-complete ]; then
+    echo Downloading $(yellow $url)...
+    wget -erobots=off --no-verbose \
+      --recursive --level inf --no-parent --no-host-directories \
+      --reject 'index.html,maven-metadata.xml*,archetype-catalog.xml' \
+      -P download \
+      $url \
+    && touch .download-complete
+    if [ ! "$?" = 0 ]; then
+      echo Unable to download from $(red $url)
+      exit 1
+    fi
+  fi
+  echo Download of $(yellow $url) complete.
+}
+
+function verifyHashes() {
+  local filecount=$1
+  local file type
+  local files=$(find download -type f | egrep -v '\.(sha1|md5)$' | sort)
+  for type in md5 sha1; do
+    rm -f ${type^^}SUM
+    touch ${type^^}SUM
+    for file in $files; do
+      if [ -r "$file.$type" ]; then
+        echo "$(cat $file.$type)  $file">>${type^^}SUM
+      else
+        echo "Missing $(red $(pwd)/$file.$type)"
+      fi
+    done
+    printHashSummary $type $filecount
+  done
+}
+
+function verifyDetachedSignatures() {
+  local file
+  local sigs=$1
+  local goodsigs=$(for file in $(find download -name '*.asc'); do
+    gpg --verify $file
+  done 2>&1 | sort | uniq -c | grep 'Good signature' | awk '{print $1}')
+  [ -n "$goodsigs" ] || local goodsigs=0
+  echo Verified $(outof $sigs $goodsigs) detached GPG signatures.
+}
+
+function verifyRPMSignatures() {
+  local rpms=$(find download -name '*.rpm' | wc -l)
+  local goodrpms=0
+  echo Found $(yellow $rpms) RPMs. Checking GPG signatures...
+  local file
+  for file in $(find download -name '*.rpm'); do
+    local rpmres=$(rpm --checksig $file)
+    if [ '0' = "$?" ]; then
+      local goodrpms=$((goodrpms+1))
+    else
+      local pubkey=$(echo $rpmres | grep -o '#........')
+      gpg --armor --export ${pubkey#?} > gpg-pubkey-${pubkey#?}
+      echo Unable to verify $(red $file). Import GPG key with:
+      echo $(yellow sudo rpm --import $(pwd)/gpg-pubkey-${pubkey#?})
+    fi
+  done
+
+  echo Verified $(outof $rpms $goodrpms) RPM signatures.
+}
+
+function verifySourceTarball() {
+  local numSrc=$(find download -type f -name '*-src.tar.gz' | wc -l)
+  echo Found $(outof 1 $numSrc) expected source tarballs.
+  local tarball=$(find download -type f -name '*-src.tar.gz')
+  echo Extracting the source tarball...
+  rm -rf src && mkdir src && tar -C src -x -f $tarball
+  local branch
+  while [ -z "$branch" ]; do
+    read -p 'Enter the git branch for this release candidate: ' branch
+  done
+  echo Cloning and checking out branch $(yellow $branch)...
+  rm -rf git git-export && git clone -b $branch --separate-git-dir=git $MY_GIT_REPO git-export && rm -f git-export/.git
+  echo Comparing the following git branch to the source tarball:
+  git --git-dir=git log --graph -n1 --decorate HEAD | head -1
+  diff -r --brief git-export/ src/*/
+  if [ "$?" = 0 ]; then
+    echo Verified $(yellow $tarball) matches git branch $(yellow $branch).
+  else
+    echo $(red $tarball) does not match $(red $branch).
+  fi
+  # TODO verify this matches d277321d176b71753d391f896f09dc9785173cb0
+  # TODO verify this matches c810f51b
+}
+
+function verifyBinaryTarball() {
+  local numBin=$(find download -type f -name '*-bin.tar.gz' | wc -l)
+  echo Found $(outof 1 $numBin) expected binary tarballs.
+  local tarball=$(find download -type f -name '*-src.tar.gz')
+}
+
+function verify() {
+  local filecount=$(find download -type f | egrep -v '\.(sha1|md5)$' | wc -l)
+  local sigs=$(find download -type f -name '*.asc' | wc -l)
+  local regular=$((filecount-sigs))
+  local color=green; [ "$regular" = "$sigs" ] || local color=red
+  echo Found $($color $filecount) files: $($color $regular) artifacts, $($color $sigs) detached GPG signatures.
+  verifyHashes $filecount
+  verifyDetachedSignatures $sigs
+  verifyRPMSignatures
+  verifySourceTarball
+  verifyBinaryTarball
+}
+
+main $@
+#Debugging global variables
+#env | egrep -v '^[A-Z_]*=' | sort
