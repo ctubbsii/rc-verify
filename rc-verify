@@ -13,11 +13,17 @@ function main() {
   done
   local candidate=$MY_RC_PROJECT-$cnum
 
+  local branch
+  [ -n "$2" ] && local branch=$2
+  while [ -z "$branch" ]; do
+    read -p 'Enter the git branch for this release candidate: ' branch
+  done
+
   # must in in slash or wget gets confused with --no-parent
   local url=$MY_STAGING_REPO_BASE/$candidate/
   local tmpdir=/tmp/$USER-$candidate
 
-  (mkdir --parents $tmpdir/download && cd $tmpdir && download $url && verify)
+  (mkdir --parents $tmpdir/download && cd $tmpdir && download $url && verify $branch)
 }
 
 function green() { echo -e '\e[0;32m'$@'\e[0m'; }
@@ -108,37 +114,63 @@ function verifyRPMSignatures() {
   echo Verified $(outof $rpms $goodrpms) RPM signatures.
 }
 
+function verifyJars() {
+  local numJars=$(find download -name '*.jar' | wc -l)
+  local numSources=$(find download -name '*-sources.jar' | wc -l)
+  local numJavadoc=$(find download -name '*-javadoc.jar' | wc -l)
+  local numRegular=$(find download -name '*.jar' | egrep -v -- '-(sources|javadoc)[.]jar' | wc -l)
+  local color=green; [ "$numJars" = "$((numRegular+numSources+numJavadoc))" ] || local color=red
+  echo Found $($color $numJars) jars: $($color $numRegular) regular.
+  echo Found $(outof $numRegular $numSources) expected sources.
+  echo Found $(outof $numRegular $numJavadoc) expected javadoc.
+  for x in $(find download -name '*.jar' | egrep -v -- '-(sources|javadoc)[.]jar'); do
+    for t in sources javadoc; do
+      local f=${x:0:${#x}-4}-$t.jar
+      if [ ! -e "$f" ]; then echo Missing $(red $f)...;  fi
+    done
+  done
+}
+
 function verifySourceTarball() {
+  local branch=$1
   local numSrc=$(find download -type f -name '*-src.tar.gz' | wc -l)
   echo Found $(outof 1 $numSrc) expected source tarballs.
   local tarball=$(find download -type f -name '*-src.tar.gz')
   echo Extracting the source tarball...
   rm -rf src && mkdir src && tar -C src -x -f $tarball
-  local branch
-  while [ -z "$branch" ]; do
-    read -p 'Enter the git branch for this release candidate: ' branch
-  done
   echo Cloning and checking out branch $(yellow $branch)...
   rm -rf git git-export && git clone -b $branch --separate-git-dir=git $MY_GIT_REPO git-export && rm -f git-export/.git
   echo Comparing the following git branch to the source tarball:
   git --git-dir=git log --graph -n1 --decorate HEAD | head -1
   diff -r --brief git-export/ src/*/
   if [ "$?" = 0 ]; then
-    echo Verified $(yellow $tarball) matches git branch $(yellow $branch).
+    echo Verified 'download/**/'$(yellow $(basename $tarball)) matches git branch $(yellow $branch).
   else
     echo $(red $tarball) does not match $(red $branch).
   fi
-  # TODO verify this matches d277321d176b71753d391f896f09dc9785173cb0
-  # TODO verify this matches c810f51b
 }
 
 function verifyBinaryTarball() {
   local numBin=$(find download -type f -name '*-bin.tar.gz' | wc -l)
   echo Found $(outof 1 $numBin) expected binary tarballs.
   local tarball=$(find download -type f -name '*-src.tar.gz')
+  echo Extracting the binary tarball...
+  rm -rf bin && mkdir bin && tar -C bin -x -f $tarball
+}
+
+function verifyMvnBuild() {
+  echo Verifying src/* builds without tests on Hadoop 1 '('$(yellow mvn clean verify -Dhadoop.profile=1 -DskipTests)')'
+  (cd src/* && mvn clean verify -Dhadoop.profile=1 -DskipTests | grep BUILD)
+  echo Verifying src/* builds without tests on Hadoop 2 '('$(yellow mvn clean verify -Dhadoop.profile=2 -DskipTests)')'
+  (cd src/* && mvn clean verify -Dhadoop.profile=1 -DskipTests | grep BUILD)
+  echo Verifying src/* builds with tests on Hadoop 1 '('$(yellow mvn clean verify -Dhadoop.profile=1)')'
+  (cd src/* && mvn clean verify -Dhadoop.profile=1 | grep BUILD)
+  echo Verifying src/* builds with tests on Hadoop 2 '('$(yellow mvn clean verify -Dhadoop.profile=1)')'
+  (cd src/* && mvn clean verify -Dhadoop.profile=2 | grep BUILD)
 }
 
 function verify() {
+  local branch=$1
   local filecount=$(find download -type f | egrep -v '\.(sha1|md5)$' | wc -l)
   local sigs=$(find download -type f -name '*.asc' | wc -l)
   local regular=$((filecount-sigs))
@@ -147,8 +179,10 @@ function verify() {
   verifyHashes $filecount
   verifyDetachedSignatures $sigs
   verifyRPMSignatures
-  verifySourceTarball
+  verifyJars
+  verifySourceTarball $branch
   verifyBinaryTarball
+  verifyMvnBuild
 }
 
 main $@
