@@ -100,13 +100,13 @@ function verifyRPMSignatures() {
   echo Found $(yellow $rpms) RPMs. Checking GPG signatures...
   local file
   for file in $(find download -name '*.rpm'); do
-    local rpmres=$(rpm --checksig $file)
+    rpm --checksig $file >/dev/null
     if [ '0' = "$?" ]; then
       local goodrpms=$((goodrpms+1))
     else
-      local pubkey=$(echo $rpmres | grep -o '#........')
+      local pubkey=$(rpm --checksig $file | grep -o '#........')
       gpg --armor --export ${pubkey#?} > gpg-pubkey-${pubkey#?}
-      echo Unable to verify $(red $file). Import GPG key with:
+      echo Unable to verify 'download/**'/$(red $(basename $file)). Import GPG key with:
       echo $(yellow sudo rpm --import $(pwd)/gpg-pubkey-${pubkey#?})
     fi
   done
@@ -141,7 +141,7 @@ function verifySourceTarball() {
   echo Cloning and checking out branch $(yellow $branch)...
   rm -rf git git-export && git clone -b $branch --separate-git-dir=git $MY_GIT_REPO git-export && rm -f git-export/.git
   echo Comparing the following git branch to the source tarball:
-  git --git-dir=git log --graph -n1 --decorate HEAD | head -1
+  git --git-dir=git log --graph -n1 --color --decorate HEAD | head -1
   diff -r --brief git-export/ src/*/
   if [ "$?" = 0 ]; then
     echo Verified 'download/**/'$(yellow $(basename $tarball)) matches git branch $(yellow $branch).
@@ -159,14 +159,14 @@ function verifyBinaryTarball() {
 }
 
 function verifyMvnBuild() {
-  echo Verifying src/* builds without tests on Hadoop 1 '('$(yellow mvn clean verify -Dhadoop.profile=1 -DskipTests)')'
-  (cd src/* && mvn clean verify -Dhadoop.profile=1 -DskipTests | grep BUILD)
-  echo Verifying src/* builds without tests on Hadoop 2 '('$(yellow mvn clean verify -Dhadoop.profile=2 -DskipTests)')'
-  (cd src/* && mvn clean verify -Dhadoop.profile=1 -DskipTests | grep BUILD)
-  echo Verifying src/* builds with tests on Hadoop 1 '('$(yellow mvn clean verify -Dhadoop.profile=1)')'
-  (cd src/* && mvn clean verify -Dhadoop.profile=1 | grep BUILD)
-  echo Verifying src/* builds with tests on Hadoop 2 '('$(yellow mvn clean verify -Dhadoop.profile=1)')'
-  (cd src/* && mvn clean verify -Dhadoop.profile=2 | grep BUILD)
+  for h in 1 2; do
+    for s in '' ' -DskipTests'; do
+      local t=
+      [ -n "$s" ] && local t='out'
+      echo Verifying src/* builds with$t tests on Hadoop $h '('$(yellow mvn clean verify -Dhadoop.profile=$h$s)')'
+      (cd src/* && mvn clean verify -Dhadoop.profile=$h $s | grep BUILD)
+    done
+  done
 }
 
 function verify() {
