@@ -23,7 +23,7 @@ function main() {
   local url=$MY_STAGING_REPO_BASE/$candidate/
   local tmpdir=/tmp/$USER-$candidate
 
-  (mkdir --parents $tmpdir/download && cd $tmpdir && download $url && verify $branch)
+  (mkdir -p $tmpdir/download && cd $tmpdir && download $url && verify $branch)
 }
 
 function green() { echo -e '\e[0;32m'$@'\e[0m'; }
