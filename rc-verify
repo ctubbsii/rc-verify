@@ -123,12 +123,25 @@ function verifyJars() {
   echo Found $($color $numJars) jars: $($color $numRegular) regular.
   echo Found $(outof $numRegular $numSources) expected sources.
   echo Found $(outof $numRegular $numJavadoc) expected javadoc.
-  for x in $(find download -name '*.jar' | egrep -v -- '-(sources|javadoc)[.]jar'); do
-    for t in sources javadoc; do
-      local f=${x:0:${#x}-4}-$t.jar
+  local file type
+  local numSealed=0
+  local m=META-INF/MANIFEST.MF
+  for file in $(find download -name '*.jar' | egrep -v -- '-(sources|javadoc)[.]jar'); do
+    if jar tf $file | egrep -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*|web/.*)$'; then
+      echo $(red $file) contains unexpected content.
+    fi
+    if rm -rf META-INF && jar xf $file $m && dos2unix $m &>/dev/null && cat $m | grep -q '^Sealed: true$'; then
+      local numSealed=$((numSealed+1))
+    else
+      echo $(red $file) is not sealed.
+    fi
+    for type in sources javadoc; do
+      local f=${file%.jar}-$type.jar
       if [ ! -e "$f" ]; then echo Missing $(red $f)...;  fi
     done
   done
+  rm -rf META-INF
+  echo Verified $(outof $numRegular $numSealed) jars are sealed.
 }
 
 function verifySourceTarball() {
@@ -153,12 +166,26 @@ function verifySourceTarball() {
 function verifyBinaryTarball() {
   local numBin=$(find download -type f -name '*-bin.tar.gz' | wc -l)
   echo Found $(outof 1 $numBin) expected binary tarballs.
-  local tarball=$(find download -type f -name '*-src.tar.gz')
+  local tarball=$(find download -type f -name '*-bin.tar.gz')
   echo Extracting the binary tarball...
   rm -rf bin && mkdir bin && tar -C bin -x -f $tarball
+  local file
+  local numJars=0
+  local count=0
+  for file in $(find download -name '*.jar' | egrep -v -- '-(sources|javadoc)[.]jar'); do
+    local numJars=$((numJars+1))
+    local lib=bin/*/lib/$(basename ${file%-*}).jar
+    if diff $file $lib >/dev/null; then
+      local count=$((count+1))
+    else
+      echo $(red $file) does not match $(red $lib)
+    fi
+  done
+  echo Verified $(outof $numJars $count) jars match the contents of the lib directory in the binary tarball.
 }
 
 function verifyMvnBuild() {
+  local h s
   for h in 1 2; do
     for s in '' ' -DskipTests'; do
       local t=
@@ -180,8 +207,8 @@ function verify() {
   verifyDetachedSignatures $sigs
   verifyRPMSignatures
   verifyJars
-  verifySourceTarball $branch
   verifyBinaryTarball
+  verifySourceTarball $branch
   verifyMvnBuild
 }
 
