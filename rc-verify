@@ -185,13 +185,14 @@ function verifyBinaryTarball() {
 }
 
 function verifyMvnBuild() {
+  mvn --version
   local h s
-  for h in 1 2; do
-    for s in '' ' -DskipTests'; do
+  for s in ' -DskipTests' ''; do
+    for h in 1 2; do
       local t=
       [ -n "$s" ] && local t='out'
       echo Verifying src/* builds with$t tests on Hadoop $h '('$(yellow mvn clean verify -Dhadoop.profile=$h$s)')'
-      (cd src/* && mvn clean verify -Dhadoop.profile=$h $s | grep BUILD)
+      (cd src/* && mvn clean verify -Dhadoop.profile=$h $s | egrep '(BUILD|ERROR|WARNING)')
     done
   done
 }
