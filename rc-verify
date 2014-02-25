@@ -1,6 +1,6 @@
 #! /usr/bin/env bash
 
-MY_GIT_REPO=http://git.apache.org/accumulo.git/
+MY_GIT_REPO=git@github.com:apache/accumulo
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapacheaccumulo
 
@@ -152,7 +152,7 @@ function verifySourceTarball() {
   echo Extracting the source tarball...
   rm -rf src && mkdir src && tar -C src -x -f $tarball
   echo Cloning and checking out branch $(yellow $branch)...
-  rm -rf git git-export && git clone -b $branch --separate-git-dir=git $MY_GIT_REPO git-export && rm -f git-export/.git
+  rm -rf git git-export && git clone --no-checkout --separate-git-dir=git $MY_GIT_REPO git-export && git --git-dir=git checkout -b $branch $branch && rm -f git-export/.git
   echo Comparing the following git branch to the source tarball:
   git --git-dir=git log --graph -n1 --color --decorate HEAD | head -1
   diff -r --brief git-export/ src/*/
