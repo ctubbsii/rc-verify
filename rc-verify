@@ -165,9 +165,9 @@ function verifySourceTarball() {
 }
 
 function verifyBinaryTarball() {
-  local numBin=$(find download -type f -name '*-bin.tar.gz' | wc -l)
+  local numBin=$(find download -type f -name '*-dist.tar.gz' | wc -l)
   echo Found $(outof 1 $numBin) expected binary tarballs.
-  local tarball=$(find download -type f -name '*-bin.tar.gz')
+  local tarball=$(find download -type f -name '*-dist.tar.gz')
   echo Extracting the binary tarball...
   rm -rf bin && mkdir bin && tar -C bin -x -f $tarball
   local file
@@ -175,7 +175,7 @@ function verifyBinaryTarball() {
   local count=0
   for file in $(find download -name '*.jar' | egrep -v -- '-(sources|javadoc)[.]jar'); do
     local numJars=$((numJars+1))
-    local lib=bin/*/lib/$(basename ${file%-*}).jar
+    local lib=bin/*/lib/$(basename ${file})
     if diff $file $lib >/dev/null; then
       local count=$((count+1))
     else
