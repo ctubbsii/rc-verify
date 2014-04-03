@@ -154,7 +154,7 @@ function verifySourceTarball() {
   echo Cloning and checking out branch $(yellow $branch)...
   rm -rf git git-export && git clone --no-checkout --separate-git-dir=git $MY_GIT_REPO git-export && git --git-dir=git checkout -b $branch $branch && rm -f git-export/.git
   echo Comparing the following git branch to the source tarball:
-  git --git-dir=git log --graph -n1 --color --decorate HEAD | head -1
+  git --git-dir=git log --graph -n1 --color --decorate $branch | head -1
   diff -r --brief git-export/ src/*/
   if [ "$?" = 0 ]; then
     echo Verified 'download/**/'$(yellow $(basename $tarball)) matches git branch $(yellow $branch).
