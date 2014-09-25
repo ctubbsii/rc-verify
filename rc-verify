@@ -156,7 +156,7 @@ function verifySourceTarball() {
   rm -rf git git-export && git clone --no-checkout --separate-git-dir=git $MY_GIT_REPO git-export && (cd git-export && (git checkout -b $branch refs/tags/$branch || git checkout -b $branch origin/$branch)) && rm -f git-export/.git git-export/.gitignore
   echo Comparing the following git branch to the source tarball:
   git --git-dir=git log --graph -n1 --color --decorate $branch | head -1
-  diff -r --brief git-export/ src/*/
+  diff -r --brief git-export/ src/*/ | grep -v '^Only in git-export/.*: \.gitignore$'
   if [ "$?" = 0 ]; then
     echo Verified 'download/**/'$(yellow $(basename $tarball)) matches git branch $(yellow $branch).
   else
