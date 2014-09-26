@@ -20,11 +20,17 @@ function main() {
     read -p 'Enter the git branch for this release candidate: ' branch
   done
 
+  local commit
+  [ -n "$3" ] && local commit=$3
+  while [ -z "$commit" ]; do
+    read -p 'Enter the git commit for this release candidate: ' commit
+  done
+
   # must in in slash or wget gets confused with --no-parent
   local url=$MY_STAGING_REPO_BASE/$candidate/
   local tmpdir=/tmp/$USER-$candidate
 
-  (mkdir -p $tmpdir/download && cd $tmpdir && download $url && verify $branch)
+  (mkdir -p $tmpdir/download && cd $tmpdir && download $url && verify $branch $commit)
 }
 
 function green() { echo -e '\e[0;32m'$@'\e[0m'; }
@@ -116,6 +122,7 @@ function verifyRPMSignatures() {
 }
 
 function verifyJars() {
+  local commit=$1
   local numJars=$(find download -name '*.jar' | wc -l)
   local numSources=$(find download -name '*-sources.jar' | wc -l)
   local numJavadoc=$(find download -name '*-javadoc.jar' | wc -l)
@@ -126,15 +133,33 @@ function verifyJars() {
   echo Found $(outof $numRegular $numJavadoc) expected javadoc.
   local file type
   local numSealed=0
+  local numGoodBuildNum=0
+  local numBadBuildNum=0
+  local numDirtyBuildNum=0
   local m=META-INF/MANIFEST.MF
   for file in $(find download -name '*.jar' | egrep -v -- '-(sources|javadoc)[.]jar'); do
     if jar tf $file | egrep -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*|web/.*)$'; then
-      echo $(red $file) contains unexpected content.
+      echo $(red $(basename $file)) contains unexpected content.
     fi
-    if rm -rf META-INF && jar xf $file $m && dos2unix $m &>/dev/null && cat $m | grep -q '^Sealed: true$'; then
-      local numSealed=$((numSealed+1))
+    if rm -rf META-INF && jar xf $file $m && dos2unix $m &>/dev/null; then
+      if cat $m | grep -q '^Sealed: true$'; then
+        local numSealed=$((numSealed+1))
+      else
+        echo $(red $file) is not sealed.
+      fi
+      local key=$(cat $m | grep '^Implementation-Build: ' | cut -c 23-)
+      if [[ $key == $commit ]]; then
+        local numGoodBuildNum=$((numGoodBuildNum+1))
+      elif [[ $key == "${commit}-dirty" ]]; then
+        local numDirtyBuildNum=$((numDirtyBuildNum+1))
+        echo $(basename $file) has $(yellow dirty) Implementation Build: $(yellow $key) '(probably maven-release-plugin)'
+      else
+        local numBadBuildNum=$((numBadBuildNum+1))
+        echo $(basename $file) has $(red wrong) Implementation Build: $(red $key)
+      fi
     else
-      echo $(red $file) is not sealed.
+      echo $(red $(basename $file)) is not sealed.
+      echo $(red $(basename $file)) does not specify a build number.
     fi
     for type in sources javadoc; do
       local f=${file%.jar}-$type.jar
@@ -143,20 +168,30 @@ function verifyJars() {
   done
   rm -rf META-INF
   echo Verified $(outof $numRegular $numSealed) jars are sealed.
+  echo $(outof $numRegular $numGoodBuildNum) jars match $(yellow $commit)
+  echo $(outof 0 $numDirtyBuildNum) jars match $(yellow $commit)-dirty
+  echo $(outof 0 $numBadBuildNum) jars do not match $(yellow $commit)
 }
 
 function verifySourceTarball() {
   local branch=$1
+  local commit=$2
   local numSrc=$(find download -type f -name '*-src.tar.gz' | wc -l)
   echo Found $(outof 1 $numSrc) expected source tarballs.
   local tarball=$(find download -type f -name '*-src.tar.gz')
   echo Extracting the source tarball...
   rm -rf src && mkdir src && tar -C src -x -f $tarball
   echo Cloning and checking out branch $(yellow $branch)...
-  rm -rf git git-export && git clone --no-checkout --separate-git-dir=git $MY_GIT_REPO git-export && (cd git-export && (git checkout -b $branch refs/tags/$branch || git checkout -b $branch origin/$branch)) && rm -f git-export/.git git-export/.gitignore
+  rm -rf git git-export && git clone --no-checkout --separate-git-dir=git $MY_GIT_REPO git-export && (cd git-export && (git checkout -b $branch-test refs/tags/$branch || git checkout -b $branch-test origin/$branch)) && rm -f git-export/.git $(find git-export -name '.gitignore')
   echo Comparing the following git branch to the source tarball:
-  git --git-dir=git log --graph -n1 --color --decorate $branch | head -1
-  diff -r --brief git-export/ src/*/ | grep -v '^Only in git-export/.*: \.gitignore$'
+  git --git-dir=git log --graph -n1 --color --decorate $branch-test | head -1
+  local head=$(git --git-dir=git log --no-color -n1 | head -1 | cut -c 8-)
+  if [[ $head == $commit ]]; then
+    echo $(green HEAD) matches $(yellow $commit)
+  else
+    echo $(red HEAD:$head) does $(red NOT) match $(yellow $commit)
+  fi
+  diff -r --brief git-export/ src/*/
   if [ "$?" = 0 ]; then
     echo Verified 'download/**/'$(yellow $(basename $tarball)) matches git branch $(yellow $branch).
   else
@@ -178,8 +213,10 @@ function verifyBinaryTarball() {
     local lib=bin/*/lib/$(basename ${file%-*}).jar
     if diff $file $lib >/dev/null; then
       local count=$((count+1))
-    else
+    elif [[ -e bin/*/lib/$(basename ${file%-*}).jar ]]; then
       echo $(red $file) does not match $(red $lib)
+    else
+      echo $(red "$(basename $file) doesn't exist in lib")
     fi
   done
   echo Verified $(outof $numJars $count) jars match the contents of the lib directory in the binary tarball.
@@ -200,6 +237,7 @@ function verifyMvnBuild() {
 
 function verify() {
   local branch=$1
+  local commit=$2
   local filecount=$(find download -type f | egrep -v '\.(sha1|md5)$' | wc -l)
   local sigs=$(find download -type f -name '*.asc' | wc -l)
   local regular=$((filecount-sigs))
@@ -208,9 +246,9 @@ function verify() {
   verifyHashes $filecount
   verifyDetachedSignatures $sigs
   verifyRPMSignatures
-  verifyJars
+  verifyJars $commit
   verifyBinaryTarball
-  verifySourceTarball $branch
+  verifySourceTarball $branch $commit
   verifyMvnBuild
 }
 
