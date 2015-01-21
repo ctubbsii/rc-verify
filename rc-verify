@@ -50,7 +50,7 @@ function printHashSummary() {
   local expected=$2
   local actual=$(wc -l <${type^^}SUM)
   local verified=$(${type}sum -c ${type^^}SUM 2>/dev/null| grep 'OK$' | wc -l)
-  echo -n Found $(outof $expected $actual) ${type} hashes.' '
+  echo -n Found $(outof $expected $actual) ${type} hashes' (ignoring GPG signatures). '
   echo Verified $(outof $actual $verified).
 }
 
@@ -76,7 +76,7 @@ function download() {
 function verifyHashes() {
   local filecount=$1
   local file type
-  local files=$(find download -type f | egrep -v '\.(sha1|md5)$' | sort)
+  local files=$(find download -type f | egrep -v '\.(sha1|md5|asc)$' | sort)
   for type in md5 sha1; do
     rm -f ${type^^}SUM
     touch ${type^^}SUM
@@ -243,7 +243,7 @@ function verify() {
   local regular=$((filecount-sigs))
   local color=green; [ "$regular" = "$sigs" ] || local color=red
   echo Found $($color $filecount) files: $($color $regular) artifacts, $($color $sigs) detached GPG signatures.
-  verifyHashes $filecount
+  verifyHashes $regular
   verifyDetachedSignatures $sigs
   verifyRPMSignatures
   verifyJars $commit
