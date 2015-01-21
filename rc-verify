@@ -229,7 +229,7 @@ function verifyMvnBuild() {
     for h in 1 2; do
       local t=
       [ -n "$s" ] && local t='out'
-      echo Verifying src/* builds with$t tests on Hadoop $h '('$(yellow mvn clean verify -Dhadoop.profile=$h$s)')'
+      echo Verifying src/* builds with$t tests on Hadoop $h '('$(yellow mvn clean verify -Dtimeout.factor=2 -Dhadoop.profile=$h$s)')'
       (cd src/* && mvn clean verify -Dhadoop.profile=$h $s | egrep '(BUILD|ERROR|WARNING)')
     done
   done
