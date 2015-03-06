@@ -29,8 +29,9 @@ function main() {
   # must in in slash or wget gets confused with --no-parent
   local url=$MY_STAGING_REPO_BASE/$candidate/
   local tmpdir=/tmp/$USER-$candidate
+  local testsDir="`pwd`/tests"
 
-  (mkdir -p $tmpdir/download && cd $tmpdir && download $url && verify $branch $commit)
+  (mkdir -p $tmpdir/download && cd $tmpdir && download $url && verify $branch $commit $testsDir)
 }
 
 function green() { echo -e '\e[0;32m'$@'\e[0m'; }
@@ -235,9 +236,25 @@ function verifyMvnBuild() {
   done
 }
 
+function verifyTests() { 
+  local branch=$1 
+  local testsDir=$2 
+  local regex=".*([0-9][.][0-9][.][0-9]).*" 
+  [[ $branch =~ $regex ]] 
+  local version="${BASH_REMATCH[1]}"
+  for script in "$testsDir/*"
+  do
+    if [ -f $script -a -x $script ] 
+    then 
+      $script $version 
+    fi 
+  done 
+}
+
 function verify() {
   local branch=$1
   local commit=$2
+  local testsDir=$3
   local filecount=$(find download -type f | egrep -v '\.(sha1|md5)$' | wc -l)
   local sigs=$(find download -type f -name '*.asc' | wc -l)
   local regular=$((filecount-sigs))
@@ -250,6 +267,7 @@ function verify() {
   verifyBinaryTarball
   verifySourceTarball $branch $commit
   verifyMvnBuild
+  verifyTests $branch $testsDir
 }
 
 main $@

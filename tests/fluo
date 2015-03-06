@@ -1,0 +1,8 @@
+#! /usr/bin/env bash
+
+set -e
+
+rm -rf fluo
+git clone https://github.com/fluo-io/fluo.git
+cd fluo
+mvn verify -Daccumulo.version=$1
