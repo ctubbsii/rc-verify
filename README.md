@@ -1,4 +1,4 @@
 rc-verify
 =========
 
-Release Candidate Verifier
+Accumulo Release Candidate Verifier
