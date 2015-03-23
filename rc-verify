@@ -34,6 +34,24 @@ function main() {
   (mkdir -p $tmpdir/download && cd $tmpdir && download $url && verify $branch $commit $testsDir)
 }
 
+# colorize mvn output
+function mvn() {
+  trap 'echo -n "\033[m"' SIGHUP SIGINT SIGTERM
+  command mvn "$@" 2>&1 | awk '
+    BEGIN { IGNORECASE=1 }
+    /BUILD SUCCESS/ { print "\033[1;36m" $0 "\033[m" ; next }
+    /^\[FATAL\]/    { print "\033[1;31m" $0 "\033[m" ; next }
+    /^\[ERROR\]/    { print "\033[1;31m" $0 "\033[m" ; next }
+    /^\[TRACE\]/    { print "\033[2;33m" $0 "\033[m" ; next }
+    /^\[WARNING\]/  { print "\033[1;33m" $0 "\033[m" ; next }
+    /^\[DEBUG\]/    { print "\033[2;34m" $0 "\033[m" ; next }
+    /^\[INFO\]/     { print "\033[0;37m" $0 "\033[m" ; next }
+    /^\[ALL\]/      { print "\033[1;37m" $0 "\033[m" ; next }
+    { print }
+  '
+  return ${PIPESTATUS[0]} ${pipestatus[1]}
+}
+
 function green() { echo -e '\e[0;32m'$@'\e[0m'; }
 function yellow() { echo -e '\e[0;33m'$@'\e[0m'; }
 function red() { echo -e '\e[0;31m'$@'\e[0m'; }
