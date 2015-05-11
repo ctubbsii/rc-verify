@@ -254,19 +254,15 @@ function verifyMvnBuild() {
   done
 }
 
-function verifyTests() { 
-  local branch=$1 
-  local testsDir=$2 
-  local regex=".*([0-9][.][0-9][.][0-9]).*" 
-  [[ $branch =~ $regex ]] 
+function verifyTests() {
+  local branch=$1
+  local testsDir=$2
+  local regex=".*([0-9][.][0-9][.][0-9]).*"
+  [[ $branch =~ $regex ]]
   local version="${BASH_REMATCH[1]}"
-  for script in "$testsDir/*"
-  do
-    if [ -f $script -a -x $script ] 
-    then 
-      $script $version 
-    fi 
-  done 
+  for script in "$testsDir/*"; do
+    [[ -f "$script" ]] && [[ -x "$script" ]] && "$script" $version
+  done
 }
 
 function verify() {
