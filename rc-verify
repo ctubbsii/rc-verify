@@ -37,7 +37,7 @@ function main() {
 # colorize mvn output
 function mvn() {
   trap 'echo -n "\033[m"' SIGHUP SIGINT SIGTERM
-  command mvn "$@" 2>&1 | awk '
+  command mvn "$@" 2>&1 | tee -a $tmpdir/maven-log.txt | awk '
     BEGIN { IGNORECASE=1 }
     /BUILD SUCCESS/ { print "\033[1;36m" $0 "\033[m" ; next }
     /^\[FATAL\]/    { print "\033[1;31m" $0 "\033[m" ; next }
