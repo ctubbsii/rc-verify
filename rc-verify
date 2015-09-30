@@ -286,6 +286,7 @@ function verify() {
   verifyTests $branch $testsDir
 }
 
+umask 0022
 main $@
 #Debugging global variables
 #env | egrep -v '^[A-Z_]*=' | sort
