@@ -28,7 +28,7 @@ function main() {
 
   # must in in slash or wget gets confused with --no-parent
   local url=$MY_STAGING_REPO_BASE/$candidate/
-  local tmpdir=/tmp/$USER-$candidate
+  local tmpdir=/var/tmp/$USER/$candidate
   local testsDir="`pwd`/tests"
 
   (mkdir -p $tmpdir/download && cd $tmpdir && download $url && verify $branch $commit $testsDir)
