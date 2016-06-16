@@ -37,9 +37,7 @@ function main() {
 # colorize mvn output
 function mvn() {
   trap 'echo -n "\033[m"' SIGHUP SIGINT SIGTERM
-  skipFindbugs=''
-  grep -q '<findbugs[.]version>2[.]' pom.xml && java -version 2>&1 | grep -q 'version "1[.][89][.]' && skipFindbugs='-Dfindbugs.skip'
-  command mvn "$@" --fail-at-end $skipFindbugs 2>&1 | tee -a $tmpdir/maven-log.txt | awk '
+  command mvn "$@" --fail-at-end 2>&1 | tee -a $tmpdir/maven-log.txt | awk '
     BEGIN { IGNORECASE=1 }
     /BUILD SUCCESS/ { print "\033[1;36m" $0 "\033[m" ; next }
     /^\[FATAL\]/    { print "\033[1;31m" $0 "\033[m" ; next }
