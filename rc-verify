@@ -144,9 +144,11 @@ verifyJars() {
   local numRegular; numRegular=$(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar' | wc -l)
   echo "Found $(green "$numRegular") jars."
   echo "Found $(outof "$numRegular" "$numSources") expected sources."
-  find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" .jar)-sources.jar' \; -exec echo 'Missing sources for: {}' \;
-  find download/ -name '*-sources.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" -sources.jar).jar' \; -exec echo 'Extra source jar: {}' \;
+  find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" .jar)-sources.jar' \; -exec echo -e 'Missing -sources.jar for \e[0;31m'{}'\e[0m' \;
+  find download/ -name '*-sources.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" -sources.jar).jar' \; -exec echo -e 'Extra source jar: \e[0;31m'{}'\e[0m' \;
   echo "Found $(outof "$numRegular" "$numJavadoc") expected javadoc."
+  find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" .jar)-javadoc.jar' \; -exec echo -e 'Missing -javadoc.jar for \e[0;31m'{}'\e[0m' \;
+  find download/ -name '*-javadoc.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" -javadoc.jar).jar' \; -exec echo -e 'Extra javadoc jar: \e[0;31m'{}'\e[0m' \;
   local file type
   local numSealed=0
   local numGoodBuildNum=0
@@ -177,10 +179,6 @@ verifyJars() {
       echo "$(red "$(basename "$file")") is not sealed."
       echo "$(red "$(basename "$file")") does not specify a build number."
     fi
-    for type in sources javadoc; do
-      local f=${file%.jar}-$type.jar
-      if [[ ! -e "$f" ]]; then echo "Missing $(red "$f")...";  fi
-    done
   done
   rm -rf META-INF
   echo "Verified $(outof "$numRegular" "$numSealed") jars are sealed."
@@ -198,7 +196,7 @@ verifySourceTarball() {
   echo "Extracting the source tarball..."
   rm -rf src && mkdir src && tar -C src -x -f "$tarball"
   echo "Cloning and checking out branch $(yellow "$branch")..."
-  rm -rf git git-export && git clone --no-checkout --separate-git-dir=git "$MY_GIT_REPO" git-export && (cd git-export && (git checkout -b "$branch"-test refs/tags/"$branch" || git checkout -b "$branch"-test origin/"$branch")) && rm -f git-export/.git "$(find git-export -name '.gitignore')"
+  rm -rf git git-export && git clone --no-checkout --separate-git-dir=git "$MY_GIT_REPO" git-export && (cd git-export && (git checkout -b "$branch"-test refs/tags/"$branch" || git checkout -b "$branch"-test origin/"$branch")) && rm -f git-export/.git $(find git-export -name '.gitignore')
   echo "Comparing the following git branch to the source tarball:"
   git --git-dir=git log --graph -n1 --color --decorate "$branch"-test | head -1
   local head; head=$(git --git-dir=git log --no-color -n1 | head -1 | cut -c 8-)
@@ -241,10 +239,10 @@ verifyBinaryTarball() {
 verifyMvnBuild() {
   mvn --version
   local h s
-  for s in ' -DskipTests' ''; do
+  for s in '-DskipTests' ''; do
     for h in 1 2; do
       local t=''; [[ -n "$s" ]] && t='out'
-      echo "Verifying src/* builds with$t tests on Hadoop $h ($(yellow mvn clean verify -Dtimeout.factor=2 -Dhadoop.profile="$h$s"))"
+      echo "Verifying src/* builds with$t tests on Hadoop $h ($(yellow mvn clean verify -Dtimeout.factor=2 -Dhadoop.profile="$h" "$s"))"
       (cd src/* && mvn clean verify -Dhadoop.profile="$h" "$s" | egrep '(BUILD|ERROR|WARNING)')
     done
   done
