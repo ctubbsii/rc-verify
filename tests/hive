@@ -6,25 +6,25 @@ rm -rf hive
 git clone https://github.com/apache/hive.git
 cd hive
 
-OPTS="-Phadoop-2 -Daccumulo-thrift.version=0.9.1 -Daccumulo.version=$1"
+OPTS=('-Phadoop-2' '-Daccumulo-thrift.version=0.9.1' "-Daccumulo.version=$1")
 
 for branch in "branch-1" "master"
 do
   git checkout $branch
 
   # Install hive
-  mvn install $OPTS -DskipTests
+  mvn install "${OPTS[@]}" -DskipTests
 
   cd accumulo-handler
   # Run accumulo-handler tests
-  mvn package $OPTS
+  mvn package "${OPTS[@]}"
   cd ..
 
   # Install the itests modules (detached from root pom)
   cd itests
-  mvn install $OPTS -DskipTests
+  mvn install "${OPTS[@]}" -DskipTests
 
   # Run the Accumulo tests
   cd qtest-accumulo
-  mvn package $OPTS
+  mvn package "${OPTS[@]}"
 done

@@ -196,7 +196,7 @@ verifySourceTarball() {
   echo "Extracting the source tarball..."
   rm -rf src && mkdir src && tar -C src -x -f "$tarball"
   echo "Cloning and checking out branch $(yellow "$branch")..."
-  rm -rf git git-export && git clone --no-checkout --separate-git-dir=git "$MY_GIT_REPO" git-export && (cd git-export && (git checkout -b "$branch"-test refs/tags/"$branch" || git checkout -b "$branch"-test origin/"$branch")) && rm -f git-export/.git $(find git-export -name '.gitignore')
+  rm -rf git git-export && git clone --no-checkout --separate-git-dir=git "$MY_GIT_REPO" git-export && (cd git-export && (git checkout -b "$branch"-test refs/tags/"$branch" || git checkout -b "$branch"-test origin/"$branch")) && rm -f git-export/.git "$(find git-export -name '.gitignore')"
   echo "Comparing the following git branch to the source tarball:"
   git --git-dir=git log --graph -n1 --color --decorate "$branch"-test | head -1
   local head; head=$(git --git-dir=git log --no-color -n1 | head -1 | cut -c 8-)

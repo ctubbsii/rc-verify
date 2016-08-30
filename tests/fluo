@@ -7,5 +7,5 @@ then
   rm -rf fluo
   git clone https://github.com/fluo-io/fluo.git
   cd fluo
-  mvn verify -Daccumulo.version=$1
+  mvn verify -Daccumulo.version="$1"
 fi
