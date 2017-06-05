@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 
 #MY_GIT_REPO=git@github.com:apache/accumulo
-MY_GIT_REPO=https://gitbox.apache.org/repos/asf/incubator-fluo-recipes
+MY_GIT_REPO=https://gitbox.apache.org/repos/asf/incubator-fluo
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapachefluo
 
@@ -111,7 +111,7 @@ verifyDetachedSignatures() {
   local file
   local sigs=$1
   local goodsigs; goodsigs=$(for file in $(find download/ -name '*.asc'); do
-    gpg --verify "$file"
+    gpg2 --verify "$file"
   done 2>&1 | sort | uniq -c | grep 'Good signature' | awk '{print $1}')
   [[ -n "$goodsigs" ]] || goodsigs=0
   echo "Verified $(outof "$sigs" "$goodsigs") detached GPG signatures."
@@ -128,7 +128,7 @@ verifyRPMSignatures() {
       local goodrpms=$((goodrpms+1))
     else
       local pubkey; pubkey=$(rpm --checksig "$file" | grep -o '#........')
-      gpg --armor --export "${pubkey#?}" > gpg-pubkey-"${pubkey#?}"
+      gpg2 --armor --export "${pubkey#?}" > gpg-pubkey-"${pubkey#?}"
       echo "Unable to verify download/**/$(red "$(basename "$file")"). Import GPG key with:"
       yellow sudo rpm --import "$(pwd)/gpg-pubkey-${pubkey#?}"
     fi
@@ -224,9 +224,10 @@ verifyBinaryTarball() {
   local count=0
   for file in $(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar'); do
     local numJars=$((numJars+1))
-    local lib; lib=(bin/*/lib/$(basename "${file%-*}").jar)
+    local lib; lib=(bin/*/lib/$(basename "${file%-*}")-incubating.jar)
     if diff "$file" "${lib[0]}" >/dev/null; then
       local count=$((count+1))
+      #echo "$(green "$file") matches $(yellow "${lib[0]}")"
     elif [[ -e "${lib[0]}" ]]; then
       echo "$(red "$file") does not match $(red "${lib[0]}")"
     else
@@ -240,7 +241,7 @@ verifyMvnBuild() {
   mvn --version
   local h s
   for s in '-DskipTests' ''; do
-    for h in 1 2; do
+    for h in 2; do
       local t=''; [[ -n "$s" ]] && t='out'
       echo "Verifying src/* builds with$t tests on Hadoop $h ($(yellow mvn clean verify -Dtimeout.factor=2 -Dhadoop.profile="$h" "$s"))"
       (cd src/* && mvn clean verify -Dhadoop.profile="$h" $s | egrep '(BUILD|ERROR|WARNING)')
@@ -275,7 +276,7 @@ verify() {
   verifyBinaryTarball
   verifySourceTarball "$branch" "$commit"
   verifyMvnBuild
-  verifyTests "$branch" "$testsDir"
+  #verifyTests "$branch" "$testsDir"
 }
 
 umask 0022
