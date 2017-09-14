@@ -77,7 +77,7 @@ download() {
     echo "Downloading $(yellow "$url")..."
     wget -erobots=off --no-verbose \
       --recursive --level inf --no-parent --no-host-directories \
-      --reject 'index.html,maven-metadata.xml*,archetype-catalog.xml' \
+      --reject 'index.html,index.html.tmp,maven-metadata.xml*,archetype-catalog.xml' \
       -P download \
       "$url" \
     && touch .download-complete
