@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 
 #MY_GIT_REPO=git@github.com:apache/accumulo
-MY_GIT_REPO=https://gitbox.apache.org/repos/asf/incubator-fluo
+MY_GIT_REPO=https://gitbox.apache.org/repos/asf/fluo
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapachefluo
 
@@ -224,7 +224,7 @@ verifyBinaryTarball() {
   local count=0
   for file in $(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar'); do
     local numJars=$((numJars+1))
-    local lib; lib=(bin/*/lib/$(basename "${file%-*}")-incubating.jar)
+    local lib; lib=(bin/*/lib/$(basename "${file%-*}").jar)
     if diff "$file" "${lib[0]}" >/dev/null; then
       local count=$((count+1))
       #echo "$(green "$file") matches $(yellow "${lib[0]}")"
@@ -241,11 +241,9 @@ verifyMvnBuild() {
   mvn --version
   local h s
   for s in '-DskipTests' ''; do
-    for h in 2; do
-      local t=''; [[ -n "$s" ]] && t='out'
-      echo "Verifying src/* builds with$t tests on Hadoop $h ($(yellow mvn clean verify -Dtimeout.factor=2 -Dhadoop.profile="$h" "$s"))"
-      (cd src/* && mvn clean verify -Dhadoop.profile="$h" $s | egrep '(BUILD|ERROR|WARNING)')
-    done
+    local t=''; [[ -n "$s" ]] && t='out'
+    echo "Verifying src/* builds with$t tests ($(yellow mvn clean verify -Dtimeout.factor=2 "$s"))"
+    (cd src/* && mvn clean verify $s | egrep '(BUILD|ERROR|WARNING)')
   done
 }
 
@@ -276,7 +274,7 @@ verify() {
   verifyBinaryTarball
   verifySourceTarball "$branch" "$commit"
   verifyMvnBuild
-  #verifyTests "$branch" "$testsDir"
+  verifyTests "$branch" "$testsDir"
 }
 
 umask 0022

@@ -1,0 +1,10 @@
+#! /usr/bin/bash
+
+set -e
+
+testproj=$(basename "$0")
+
+rm -rf "$testproj"
+git clone https://github.com/astralway/"$testproj".git
+cd "$testproj"
+mvn verify -Dfluo.version="$1"
