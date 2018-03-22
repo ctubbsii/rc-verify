@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 
 #MY_GIT_REPO=git@github.com:apache/accumulo
-MY_GIT_REPO=https://git-wip-us.apache.org/repos/asf/accumulo
+MY_GIT_REPO=https://gitbox.apache.org/repos/asf/accumulo
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapacheaccumulo
 
