@@ -25,7 +25,7 @@ main() {
 
   # must in in slash or wget gets confused with --no-parent
   local url=$MY_STAGING_REPO_BASE/$candidate/
-  local tmpdir=/var/tmp/$USER/$candidate
+  local tmpdir=$(dirname "$0")/candidates/$candidate
   local testsDir; testsDir="$(pwd)/tests"
 
   (mkdir -p "$tmpdir"/download && cd "$tmpdir" && download "$url" && verify "$branch" "$commit" "$testsDir")
@@ -224,7 +224,8 @@ verifyBinaryTarball() {
   local count=0
   for file in $(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar'); do
     local numJars=$((numJars+1))
-    local lib; lib=(bin/*/lib/$(basename "${file%-*}").jar)
+    local lib; lib=(bin/*/lib/$(basename "${file}"))
+    # local lib; lib=(bin/*/lib/$(basename "${file%-*}").jar) # strip off version
     if diff "$file" "${lib[0]}" >/dev/null; then
       local count=$((count+1))
     elif [[ -e "${lib[0]}" ]]; then
@@ -274,8 +275,8 @@ verify() {
   verifyJars "$commit"
   verifyBinaryTarball
   verifySourceTarball "$branch" "$commit"
-  verifyMvnBuild
-  verifyTests "$branch" "$testsDir"
+  #verifyMvnBuild                    # should be tested in jenkins
+  #verifyTests "$branch" "$testsDir" # not working currently
 }
 
 umask 0022
