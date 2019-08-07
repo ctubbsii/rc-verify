@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 
 #MY_GIT_REPO=git@github.com:apache/accumulo
-MY_GIT_REPO=https://gitbox.apache.org/repos/asf/accumulo
+MY_GIT_REPO=https://gitbox.apache.org/repos/asf/accumulo-maven-plugin
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapacheaccumulo
 
@@ -190,9 +190,9 @@ verifyJars() {
 verifySourceTarball() {
   local branch=$1
   local commit=$2
-  local numSrc; numSrc=$(find download/ -type f -name '*-src.tar.gz' | wc -l)
+  local numSrc; numSrc=$(find download/ -type f -name '*-source-release.tar.gz' | wc -l)
   echo "Found $(outof 1 "$numSrc") expected source tarballs."
-  local tarball; tarball=$(find download/ -type f -name '*-src.tar.gz')
+  local tarball; tarball=$(find download/ -type f -name '*-source-release.tar.gz')
   echo "Extracting the source tarball..."
   rm -rf src && mkdir src && tar -C src -x -f "$tarball"
   echo "Cloning and checking out branch $(yellow "$branch")..."
@@ -211,30 +211,6 @@ verifySourceTarball() {
   else
     echo "$(red "$tarball") does not match $(red "$branch")."
   fi
-}
-
-verifyBinaryTarball() {
-  local numBin; numBin=$(find download/ -type f -name '*-bin.tar.gz' | wc -l)
-  echo "Found $(outof 1 "$numBin") expected binary tarballs."
-  local tarball; tarball=$(find download/ -type f -name '*-bin.tar.gz')
-  echo "Extracting the binary tarball..."
-  rm -rf bin && mkdir bin && tar -C bin -x -f "$tarball"
-  local file
-  local numJars=0
-  local count=0
-  for file in $(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar'); do
-    local numJars=$((numJars+1))
-    local lib; lib=(bin/*/lib/$(basename "${file}"))
-    # local lib; lib=(bin/*/lib/$(basename "${file%-*}").jar) # strip off version
-    if diff "$file" "${lib[0]}" >/dev/null; then
-      local count=$((count+1))
-    elif [[ -e "${lib[0]}" ]]; then
-      echo "$(red "$file") does not match $(red "${lib[0]}")"
-    else
-      red "$(basename "$file") doesn't exist in lib"
-    fi
-  done
-  echo "Verified $(outof $numJars $count) jars match the contents of the lib directory in the binary tarball."
 }
 
 verifyMvnBuild() {
@@ -273,10 +249,7 @@ verify() {
   verifyDetachedSignatures "$sigs"
   verifyRPMSignatures
   verifyJars "$commit"
-  verifyBinaryTarball
   verifySourceTarball "$branch" "$commit"
-  #verifyMvnBuild                    # should be tested in jenkins
-  #verifyTests "$branch" "$testsDir" # not working currently
 }
 
 umask 0022
