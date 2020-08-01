@@ -226,6 +226,7 @@ verifyBinaryTarball() {
     local numJars=$((numJars+1))
     local lib; lib=(bin/*/lib/$(basename "${file}"))
     # local lib; lib=(bin/*/lib/$(basename "${file%-*}").jar) # strip off version
+    # local lib; lib=(bin/*/lib/$(basename "${file}" .jar).jar)
     if diff "$file" "${lib[0]}" >/dev/null; then
       local count=$((count+1))
     elif [[ -e "${lib[0]}" ]]; then
