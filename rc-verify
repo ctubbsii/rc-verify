@@ -214,6 +214,7 @@ verifySourceTarball() {
 }
 
 verifyBinaryTarball() {
+  local branch=$1
   local numBin; numBin=$(find download/ -type f -name '*-bin.tar.gz' | wc -l)
   echo "Found $(outof 1 "$numBin") expected binary tarballs."
   local tarball; tarball=$(find download/ -type f -name '*-bin.tar.gz')
@@ -224,9 +225,12 @@ verifyBinaryTarball() {
   local count=0
   for file in $(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar'); do
     local numJars=$((numJars+1))
-    local lib; lib=(bin/*/lib/$(basename "${file}"))
-    # local lib; lib=(bin/*/lib/$(basename "${file%-*}").jar) # strip off version
-    # local lib; lib=(bin/*/lib/$(basename "${file}" .jar).jar)
+    local lib
+    if [[ $branch =~ ^1[.].*$ ]]; then
+      lib=(bin/*/lib/$(basename "${file%-*}").jar) # strip off version
+    else
+      lib=(bin/*/lib/$(basename "${file}"))
+    fi
     if diff "$file" "${lib[0]}" >/dev/null; then
       local count=$((count+1))
     elif [[ -e "${lib[0]}" ]]; then
@@ -274,7 +278,7 @@ verify() {
   verifyDetachedSignatures "$sigs"
   verifyRPMSignatures
   verifyJars "$commit"
-  verifyBinaryTarball
+  verifyBinaryTarball "$branch"
   verifySourceTarball "$branch" "$commit"
   #verifyMvnBuild                    # should be tested in jenkins
   #verifyTests "$branch" "$testsDir" # not working currently
