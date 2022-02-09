@@ -205,7 +205,13 @@ verifySourceTarball() {
   echo "Extracting the source tarball..."
   rm -rf src && mkdir src && tar -C src -x -f "$tarball"
   echo "Cloning and checking out branch $(yellow "$branch")..."
-  rm -rf git git-export && git clone --no-checkout --separate-git-dir=git "$MY_GIT_REPO" git-export && (cd git-export && (git checkout -b "$branch"-test refs/tags/"$branch" || git checkout -b "$branch"-test origin/"$branch")) && rm -f git-export/.git && find git-export -type f -name '.gitignore' -exec rm -f {} \;
+  rm -rf git git-export \
+    && git clone --no-checkout --separate-git-dir=git "$MY_GIT_REPO" git-export \
+    && cd git-export \
+    && git checkout -b "$branch"-test origin/"$branch" \
+    && rm -f .git \
+    && cd .. \
+    && find git-export -type f -name '.gitignore' -exec rm -f {} \;
   echo "Comparing the following git branch to the source tarball:"
   git --git-dir=git log --graph -n1 --color --decorate "$branch"-test | head -1
   local head; head=$(git --git-dir=git log --no-color -n1 | head -1 | cut -c 8-)
@@ -240,7 +246,7 @@ verifyBinaryTarball() {
     else
       lib=(bin/*/lib/"$(basename "${file}")")
     fi
-    if diff "$file" "${lib[0]}" >/dev/null; then
+    if diff "$file" "${lib[0]}" &>/dev/null; then
       count=$((count+1))
     elif [[ -e "${lib[0]}" ]]; then
       echo "$(red "$file") does not match $(red "${lib[0]}")"
@@ -282,13 +288,20 @@ verify() {
   local sigs; sigs=$(find download/ -type f -name '*.asc' | wc -l)
   local regular=$((filecount-sigs))
   local color=green; [[ "$regular" -eq "$sigs" ]] || color=red
+  echo "-----"
   echo "Found $($color "$filecount") files: $($color "$regular") artifacts, $($color "$sigs") detached GPG signatures."
+  echo "-----"
   verifyHashes "$regular"
+  echo "-----"
   verifyDetachedSignatures "$sigs"
+  echo "-----"
   #verifyRPMSignatures
   verifyJars "$commit"
+  echo "-----"
   verifyBinaryTarball "$branch"
+  echo "-----"
   verifySourceTarball "$branch" "$commit"
+  echo "-----"
   #verifyMvnBuild                    # should be tested in jenkins
   #verifyTests "$branch" "$testsDir" # not working currently
 }
