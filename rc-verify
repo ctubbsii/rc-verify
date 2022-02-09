@@ -5,27 +5,30 @@ MY_GIT_REPO=https://gitbox.apache.org/repos/asf/accumulo
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapacheaccumulo
 
+shopt -s globstar
+shopt -s nullglob
+
 # Usage: $0 <candidateNumber>
 main() {
   local cnum; [[ -n "$1" ]] && cnum=$1
   while [[ -z "$cnum" ]]; do
-    read -p 'Enter the staging repository number: ' cnum
+    read -r -p 'Enter the staging repository number: ' cnum
   done
   local candidate=$MY_RC_PROJECT-$cnum
 
   local branch; [[ -n "$2" ]] && branch=$2
   while [[ -z "$branch" ]]; do
-    read -p 'Enter the git branch for this release candidate: ' branch
+    read -r -p 'Enter the git branch for this release candidate: ' branch
   done
 
   local commit; [[ -n "$3" ]] && commit=$3
   while [[ -z "$commit" ]]; do
-    read -p 'Enter the git commit for this release candidate: ' commit
+    read -r -p 'Enter the git commit for this release candidate: ' commit
   done
 
   # must in in slash or wget gets confused with --no-parent
   local url=$MY_STAGING_REPO_BASE/$candidate/
-  local tmpdir=$(dirname "$0")/candidates/$candidate
+  local tmpdir; tmpdir=$(dirname "$0")/candidates/$candidate
   local testsDir; testsDir="$(pwd)/tests"
 
   (mkdir -p "$tmpdir"/download && cd "$tmpdir" && download "$url" && verify "$branch" "$commit" "$testsDir")
@@ -75,13 +78,12 @@ download() {
   local url=$1
   if [[ ! -e .download-complete ]]; then
     echo "Downloading $(yellow "$url")..."
-    wget -erobots=off --no-verbose \
+    if wget -erobots=off --no-verbose \
       --recursive --level inf --no-parent --no-host-directories \
       --reject 'index.html,index.html.tmp,maven-metadata.xml*,archetype-catalog.xml' \
       -P download \
-      "$url" \
-    && touch .download-complete
-    if [[ $? -ne 0 ]]; then
+      "$url"; then touch .download-complete
+    else
       echo "Unable to download from $(red "$url")"
       exit 1
     fi
@@ -92,11 +94,11 @@ download() {
 verifyHashes() {
   local filecount=$1
   local file type
-  local files; files=$(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.asc' | sort)
+  local files; readarray -t files < <(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.asc' | sort)
   for type in md5 sha1; do
     rm -f ${type^^}SUM
     touch ${type^^}SUM
-    for file in $files; do
+    for file in "${files[@]}"; do
       if [[ -r "$file.$type" ]]; then
         echo "$(cat "$file.$type") *$file">>"${type^^}"SUM
       else
@@ -110,7 +112,7 @@ verifyHashes() {
 verifyDetachedSignatures() {
   local file
   local sigs=$1
-  local goodsigs; goodsigs=$(for file in $(find download/ -name '*.asc'); do
+  local goodsigs; goodsigs=$(for file in download/**/*.asc; do
     gpg --verify "$file"
   done 2>&1 | sort | uniq -c | grep 'Good signature' | awk '{print $1}')
   [[ -n "$goodsigs" ]] || goodsigs=0
@@ -120,14 +122,14 @@ verifyDetachedSignatures() {
 verifyRPMSignatures() {
   local rpms; rpms=$(find download/ -name '*.rpm' | wc -l)
   local goodrpms=0
+  local pubkey
   echo "Found $(yellow "$rpms") RPMs. Checking GPG signatures..."
   local file
-  for file in $(find download/ -name '*.rpm'); do
-    rpm --checksig "$file" >/dev/null
-    if [[ 0 -eq $? ]]; then
-      local goodrpms=$((goodrpms+1))
+  for file in download/**/*.rpm; do
+    if rpm --checksig "$file" >/dev/null; then
+      goodrpms=$((goodrpms+1))
     else
-      local pubkey; pubkey=$(rpm --checksig "$file" | grep -o '#........')
+      pubkey=$(rpm --checksig "$file" | grep -o '#........')
       gpg --armor --export "${pubkey#?}" > gpg-pubkey-"${pubkey#?}"
       echo "Unable to verify download/**/$(red "$(basename "$file")"). Import GPG key with:"
       yellow sudo rpm --import "$(pwd)/gpg-pubkey-${pubkey#?}"
@@ -144,41 +146,47 @@ verifyJars() {
   local numRegular; numRegular=$(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar' | wc -l)
   echo "Found $(green "$numRegular") jars."
   echo "Found $(outof "$numRegular" "$numSources") expected sources."
-  find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" .jar)-sources.jar' \; -exec echo -e 'Missing -sources.jar for \e[0;31m'{}'\e[0m' \;
-  find download/ -name '*-sources.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" -sources.jar).jar' \; -exec echo -e 'Extra source jar: \e[0;31m'{}'\e[0m' \;
   echo "Found $(outof "$numRegular" "$numJavadoc") expected javadoc."
-  find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" .jar)-javadoc.jar' \; -exec echo -e 'Missing -javadoc.jar for \e[0;31m'{}'\e[0m' \;
-  find download/ -name '*-javadoc.jar' -exec bash -c '! test -f $(dirname "'{}'")/$(basename "'{}'" -javadoc.jar).jar' \; -exec echo -e 'Extra javadoc jar: \e[0;31m'{}'\e[0m' \;
-  local file type
+  local file type jars
   local numSealed=0
   local numGoodBuildNum=0
   local numBadBuildNum=0
   local numDirtyBuildNum=0
   local m=META-INF/MANIFEST.MF
-  for file in $(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar'); do
-    if jar tf "$file" | egrep -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*|web/.*)$'; then
+  local key
+  readarray -t jars < <(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar')
+  for file in "${jars[@]}"; do
+    [[ -f "$(dirname "$file")/$(basename "$file" .jar)-sources.jar" ]] || echo -e "Missing -sources.jar for \e[0;31m$file\e[0m"
+    [[ -f "$(dirname "$file")/$(basename "$file" .jar)-javadoc.jar" ]] || echo -e "Missing -javadoc.jar for \e[0;31m$file\e[0m"
+    if jar tf "$file" | grep -E -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*|web/.*)$'; then
       echo "$(red "$(basename "$file")") contains unexpected content."
     fi
     if rm -rf META-INF && jar xf "$file" $m && dos2unix $m &>/dev/null; then
       if grep -q '^Sealed: true$' $m; then
-        local numSealed=$((numSealed+1))
+        numSealed=$((numSealed+1))
       else
         echo "$(red "$file") is not sealed."
       fi
-      local key; key=$(grep '^Implementation-Build: ' $m | cut -c 23-)
+      key=$(grep '^Implementation-Build: ' $m | cut -c 23-)
       if [[ $key == "$commit" ]]; then
-        local numGoodBuildNum=$((numGoodBuildNum+1))
+        numGoodBuildNum=$((numGoodBuildNum+1))
       elif [[ $key == "${commit}-dirty" ]]; then
-        local numDirtyBuildNum=$((numDirtyBuildNum+1))
+        numDirtyBuildNum=$((numDirtyBuildNum+1))
         echo "$(basename "$file") has $(yellow dirty) Implementation Build: $(yellow "$key") (probably maven-release-plugin)"
       else
-        local numBadBuildNum=$((numBadBuildNum+1))
+        numBadBuildNum=$((numBadBuildNum+1))
         echo "$(basename "$file") has $(red wrong) Implementation Build: $(red "$key")"
       fi
     else
       echo "$(red "$(basename "$file")") is not sealed."
       echo "$(red "$(basename "$file")") does not specify a build number."
     fi
+  done
+  for file in download/**/*-sources.jar; do
+    [[ -f "$(dirname "$file")/$(basename "$file" -sources.jar).jar" ]] || echo -e "Extra source jar: \e[0;31m$file\e[0m"
+  done
+  for file in download/**/*-javadoc.jar; do
+    [[ -f "$(dirname "$file")/$(basename "$file" -javadoc.jar).jar" ]] || echo -e "Extra javadoc jar: \e[0;31m$file\e[0m"
   done
   rm -rf META-INF
   echo "Verified $(outof "$numRegular" "$numSealed") jars are sealed."
@@ -193,6 +201,7 @@ verifySourceTarball() {
   local numSrc; numSrc=$(find download/ -type f -name '*-src.tar.gz' | wc -l)
   echo "Found $(outof 1 "$numSrc") expected source tarballs."
   local tarball; tarball=$(find download/ -type f -name '*-src.tar.gz')
+  shasum -a 512 --tag "$(pwd)/$tarball"
   echo "Extracting the source tarball..."
   rm -rf src && mkdir src && tar -C src -x -f "$tarball"
   echo "Cloning and checking out branch $(yellow "$branch")..."
@@ -205,8 +214,7 @@ verifySourceTarball() {
   else
     echo "$(red HEAD:"$head") does $(red NOT) match $(yellow "$commit")"
   fi
-  diff -r --brief git-export/ src/*/
-  if [[ $? -eq 0 ]]; then
+  if diff -r --brief git-export/ src/*/; then
     echo "Verified download/**/$(yellow "$(basename "$tarball")") matches git branch $(yellow "$branch")."
   else
     echo "$(red "$tarball") does not match $(red "$branch")."
@@ -218,38 +226,39 @@ verifyBinaryTarball() {
   local numBin; numBin=$(find download/ -type f -name '*-bin.tar.gz' | wc -l)
   echo "Found $(outof 1 "$numBin") expected binary tarballs."
   local tarball; tarball=$(find download/ -type f -name '*-bin.tar.gz')
+  shasum -a 512 --tag "$(pwd)/$tarball"
   echo "Extracting the binary tarball..."
   rm -rf bin && mkdir bin && tar -C bin -x -f "$tarball"
   local file
-  local numJars=0
   local count=0
-  for file in $(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar'); do
-    local numJars=$((numJars+1))
-    local lib
+  local lib
+  local jars
+  readarray -t jars < <(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar')
+  for file in "${jars[@]}"; do
     if [[ $branch =~ ^1[.].*$ ]]; then
-      lib=(bin/*/lib/$(basename "${file%-*}").jar) # strip off version
+      lib=(bin/*/lib/"$(basename "${file%-*}")".jar) # strip off version
     else
-      lib=(bin/*/lib/$(basename "${file}"))
+      lib=(bin/*/lib/"$(basename "${file}")")
     fi
     if diff "$file" "${lib[0]}" >/dev/null; then
-      local count=$((count+1))
+      count=$((count+1))
     elif [[ -e "${lib[0]}" ]]; then
       echo "$(red "$file") does not match $(red "${lib[0]}")"
     else
       red "$(basename "$file") doesn't exist in lib"
     fi
   done
-  echo "Verified $(outof $numJars $count) jars match the contents of the lib directory in the binary tarball."
+  echo "Verified $(outof ${#jars[@]} $count) jars match the contents of the lib directory in the binary tarball."
 }
 
 verifyMvnBuild() {
   mvn --version
-  local h s
+  local h s t
   for s in '-DskipTests' ''; do
     for h in 2 3; do
-      local t=''; [[ -n "$s" ]] && t='out'
+      t=''; [[ -n "$s" ]] && t='out'
       echo "Verifying src/* builds with$t tests on Hadoop $h ($(yellow mvn clean verify -Dtimeout.factor=2 -Dhadoop.profile="$h" "$s"))"
-      (cd src/* && mvn clean verify -Dhadoop.profile="$h" $s | egrep '(BUILD|ERROR|WARNING)')
+      (cd src/* && mvn clean verify -Dhadoop.profile="$h" $s | grep -E '(BUILD|ERROR|WARNING)')
     done
   done
 }
@@ -276,7 +285,7 @@ verify() {
   echo "Found $($color "$filecount") files: $($color "$regular") artifacts, $($color "$sigs") detached GPG signatures."
   verifyHashes "$regular"
   verifyDetachedSignatures "$sigs"
-  verifyRPMSignatures
+  #verifyRPMSignatures
   verifyJars "$commit"
   verifyBinaryTarball "$branch"
   verifySourceTarball "$branch" "$commit"
