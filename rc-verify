@@ -210,8 +210,10 @@ verifySourceTarball() {
     && cd git-export \
     && git checkout -b "$branch"-test origin/"$branch" \
     && rm -f .git \
-    && cd .. \
-    && find git-export -type f -name '.gitignore' -exec rm -f {} \;
+    && cd ..
+    # for some reason, .gitignore files are being left in the tarball
+    # && cd .. \
+    # && find git-export -type f -name '.gitignore' -exec rm -f {} \;
   echo "Comparing the following git branch to the source tarball:"
   git --git-dir=git log --graph -n1 --color --decorate "$branch"-test | head -1
   local head; head=$(git --git-dir=git log --no-color -n1 | head -1 | cut -c 8-)
