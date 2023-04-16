@@ -1,6 +1,5 @@
 #! /usr/bin/env bash
 
-#MY_GIT_REPO=git@github.com:apache/accumulo
 MY_GIT_REPO=https://gitbox.apache.org/repos/asf/fluo
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapachefluo
@@ -158,7 +157,7 @@ verifyJars() {
   for file in "${jars[@]}"; do
     [[ -f "$(dirname "$file")/$(basename "$file" .jar)-sources.jar" ]] || echo -e "Missing -sources.jar for \e[0;31m$file\e[0m"
     [[ -f "$(dirname "$file")/$(basename "$file" .jar)-javadoc.jar" ]] || echo -e "Missing -javadoc.jar for \e[0;31m$file\e[0m"
-    if jar tf "$file" | grep -E -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*|web/.*)$'; then
+    if jar tf "$file" | grep -E -v '^(org/|org/apache/|org/apache/fluo/.*|META-INF/.*|web/.*)$'; then
       echo "$(red "$(basename "$file")") contains unexpected content."
     fi
     if rm -rf META-INF && jar xf "$file" $m && dos2unix $m &>/dev/null; then
