@@ -209,7 +209,7 @@ verifySourceTarball() {
     && git clone --no-checkout --separate-git-dir=git "$MY_GIT_REPO" git-export \
     && cd git-export \
     && git checkout -b "$branch"-test origin/"$branch" \
-    && rm -f .git \
+    && rm -rf .git .github/ .asf.yaml \
     && cd ..
     # for some reason, .gitignore files are being left in the tarball
     # && cd .. \
