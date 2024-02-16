@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 
-#MY_GIT_REPO=git@github.com:apache/accumulo
-MY_GIT_REPO=https://gitbox.apache.org/repos/asf/accumulo
+#MY_GIT_REPO=git@github.com:apache/accumulo-access
+MY_GIT_REPO=https://gitbox.apache.org/repos/asf/accumulo-access
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapacheaccumulo
 
@@ -198,9 +198,9 @@ verifyJars() {
 verifySourceTarball() {
   local branch=$1
   local commit=$2
-  local numSrc; numSrc=$(find download/ -type f -name '*-src.tar.gz' | wc -l)
+  local numSrc; numSrc=$(find download/ -type f -name '*-source-release.tar.gz' | wc -l)
   echo "Found $(outof 1 "$numSrc") expected source tarballs."
-  local tarball; tarball=$(find download/ -type f -name '*-src.tar.gz')
+  local tarball; tarball=$(find download/ -type f -name '*-source-release.tar.gz')
   shasum -a 512 --tag "$(pwd)/$tarball"
   echo "Extracting the source tarball..."
   rm -rf src && mkdir src && tar -C src -x -f "$tarball"
@@ -300,7 +300,7 @@ verify() {
   #verifyRPMSignatures
   verifyJars "$commit"
   echo "-----"
-  verifyBinaryTarball "$branch"
+  #verifyBinaryTarball "$branch"
   echo "-----"
   verifySourceTarball "$branch" "$commit"
   echo "-----"
