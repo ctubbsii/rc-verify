@@ -94,7 +94,7 @@ download() {
 verifyHashes() {
   local filecount=$1
   local file type
-  local files; readarray -t files < <(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.asc' | sort)
+  local files; readarray -t files < <(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.asc' \! -name 'robots.txt' | sort)
   for type in md5 sha1; do
     rm -f ${type^^}SUM
     touch ${type^^}SUM
@@ -286,7 +286,7 @@ verify() {
   local branch=$1
   local commit=$2
   local testsDir=$3
-  local filecount; filecount=$(find download/ -type f \! -name '*.sha1' \! -name '*.md5' | wc -l)
+  local filecount; filecount=$(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name 'robots.txt' | wc -l)
   local sigs; sigs=$(find download/ -type f -name '*.asc' | wc -l)
   local regular=$((filecount-sigs))
   local color=green; [[ "$regular" -eq "$sigs" ]] || color=red
