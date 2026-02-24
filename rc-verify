@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 
-#MY_GIT_REPO=git@github.com:apache/accumulo
-MY_GIT_REPO=https://gitbox.apache.org/repos/asf/accumulo
+#MY_GIT_REPO=git@github.com:apache/accumulo-classloaders
+MY_GIT_REPO=https://gitbox.apache.org/repos/asf/accumulo-classloaders
 MY_STAGING_REPO_BASE=https://repository.apache.org/content/repositories
 MY_RC_PROJECT=orgapacheaccumulo
 
@@ -63,7 +63,7 @@ outof() {
   echo "$($color "$2")"/"$(yellow "$1")"
 }
 
-# Usage: printHashSummary sha1|md5 <expectedHashes>
+# Usage: printHashSummary sha1|md5|sha512 <expectedHashes>
 printHashSummary() {
   local type=${1,,}
   local expected=$2
@@ -91,10 +91,27 @@ download() {
   echo "Download of $(yellow "$url") complete."
 }
 
+verifyTarballHashes() {
+  local filecount=$1
+  local file type
+  local files; readarray -t files < <(find download/ -type f -name '*.tar.gz' | sort)
+  local type='sha512'
+  rm -f ${type^^}SUM
+  touch ${type^^}SUM
+  for file in "${files[@]}"; do
+    if [[ -r "$file.$type" ]]; then
+      echo "$(cat "$file.$type") *$file">>"${type^^}"SUM
+    else
+      echo "Missing $(red "$(pwd)/$file.$type")"
+    fi
+  done
+  printHashSummary $type "$filecount"
+}
+
 verifyHashes() {
   local filecount=$1
   local file type
-  local files; readarray -t files < <(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.asc' \! -name 'robots.txt' | sort)
+  local files; readarray -t files < <(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.sha512' \! -name '*.asc' \! -name 'robots.txt' | sort)
   for type in md5 sha1; do
     rm -f ${type^^}SUM
     touch ${type^^}SUM
@@ -112,11 +129,13 @@ verifyHashes() {
 verifyDetachedSignatures() {
   local file
   local sigs=$1
-  local goodsigs; goodsigs=$(for file in download/**/*.asc; do
+  local gpgoutput; gpgoutput=$(for file in download/**/*.asc; do
     gpg --verify "$file"
-  done 2>&1 | sort | uniq -c | grep 'Good signature' | awk '{print $1}')
+  done 2>&1)
+  local goodsigs; goodsigs=$(grep -c "Good signature" <<<"$gpgoutput")
   [[ -n "$goodsigs" ]] || goodsigs=0
-  echo "Verified $(outof "$sigs" "$goodsigs") detached GPG signatures."
+  local fingerprints; fingerprints=$(grep "using RSA key" <<<"$gpgoutput" | sort -u | grep -o '\S*$' | paste -sd,)
+  echo "Verified $(outof "$sigs" "$goodsigs") detached GPG signatures $(green "$fingerprints")."
 }
 
 verifyRPMSignatures() {
@@ -198,22 +217,24 @@ verifyJars() {
 verifySourceTarball() {
   local branch=$1
   local commit=$2
-  local numSrc; numSrc=$(find download/ -type f -name '*-src.tar.gz' | wc -l)
+  local numSrc; numSrc=$(find download/ -type f -name '*-source-release.tar.gz' | wc -l)
   echo "Found $(outof 1 "$numSrc") expected source tarballs."
-  local tarball; tarball=$(find download/ -type f -name '*-src.tar.gz')
+  local tarball; tarball=$(find download/ -type f -name '*-source-release.tar.gz')
   shasum -a 512 --tag "$(pwd)/$tarball"
   echo "Extracting the source tarball..."
   rm -rf src && mkdir src && tar -C src -x -f "$tarball"
+  echo "Removing DEPENDENCIES from tarball (automatically added during build)"
+  rm -f src/*/DEPENDENCIES
   echo "Cloning and checking out branch $(yellow "$branch")..."
   rm -rf git git-export \
     && git clone --no-checkout --separate-git-dir=git "$MY_GIT_REPO" git-export \
     && cd git-export \
     && git checkout -b "$branch"-test origin/"$branch" \
     && rm -rf .git .github/ .asf.yaml \
-    && cd ..
-    # for some reason, .gitignore files are being left in the tarball
-    # && cd .. \
-    # && find git-export -type f -name '.gitignore' -exec rm -f {} \;
+    && cd .. \
+    && echo "Removing .settings dirs (can be omitted in future releases)" \
+    && find git-export/modules/example-iterators-{a,b} -depth -type d -name '.settings' -exec rm -rf {} \; \
+    && find git-export -type f -name '.gitignore' -exec rm -f {} \;
   echo "Comparing the following git branch to the source tarball:"
   git --git-dir=git log --graph -n1 --color --decorate "$branch"-test | head -1
   local head; head=$(git --git-dir=git log --no-color -n1 | head -1 | cut -c 8-)
@@ -227,36 +248,6 @@ verifySourceTarball() {
   else
     echo "$(red "$tarball") does not match $(red "$branch")."
   fi
-}
-
-verifyBinaryTarball() {
-  local branch=$1
-  local numBin; numBin=$(find download/ -type f -name '*-bin.tar.gz' | wc -l)
-  echo "Found $(outof 1 "$numBin") expected binary tarballs."
-  local tarball; tarball=$(find download/ -type f -name '*-bin.tar.gz')
-  shasum -a 512 --tag "$(pwd)/$tarball"
-  echo "Extracting the binary tarball..."
-  rm -rf bin && mkdir bin && tar -C bin -x -f "$tarball"
-  local file
-  local count=0
-  local lib
-  local jars
-  readarray -t jars < <(find download/ -name '*.jar' \! -name '*-sources.jar' \! -name '*-javadoc.jar')
-  for file in "${jars[@]}"; do
-    if [[ $branch =~ ^1[.].*$ ]]; then
-      lib=(bin/*/lib/"$(basename "${file%-*}")".jar) # strip off version
-    else
-      lib=(bin/*/lib/"$(basename "${file}")")
-    fi
-    if diff "$file" "${lib[0]}" &>/dev/null; then
-      count=$((count+1))
-    elif [[ -e "${lib[0]}" ]]; then
-      echo "$(red "$file") does not match $(red "${lib[0]}")"
-    else
-      red "$(basename "$file") doesn't exist in lib"
-    fi
-  done
-  echo "Verified $(outof ${#jars[@]} $count) jars match the contents of the lib directory in the binary tarball."
 }
 
 verifyMvnBuild() {
@@ -286,21 +277,22 @@ verify() {
   local branch=$1
   local commit=$2
   local testsDir=$3
-  local filecount; filecount=$(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name 'robots.txt' | wc -l)
+  local filecount; filecount=$(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.sha512' \! -name 'robots.txt' | wc -l)
   local sigs; sigs=$(find download/ -type f -name '*.asc' | wc -l)
   local regular=$((filecount-sigs))
   local color=green; [[ "$regular" -eq "$sigs" ]] || color=red
   echo "-----"
   echo "Found $($color "$filecount") files: $($color "$regular") artifacts, $($color "$sigs") detached GPG signatures."
+  echo "Found $(green "$(find download/ -name '*.tar.gz' | wc -l)") tarballs; $(green "$(find download/ -name '*.pom' | wc -l)") poms; $(green "$(find download/ -name '*.jar' | wc -l)") jars."
   echo "-----"
   verifyHashes "$regular"
+  echo "-----"
+  verifyTarballHashes 1
   echo "-----"
   verifyDetachedSignatures "$sigs"
   echo "-----"
   #verifyRPMSignatures
   verifyJars "$commit"
-  echo "-----"
-  verifyBinaryTarball "$branch"
   echo "-----"
   verifySourceTarball "$branch" "$commit"
   echo "-----"
