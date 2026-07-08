@@ -69,7 +69,7 @@ outof() {
   echo "$($color "$2")"/"$(yellow "$1")"
 }
 
-# Usage: printHashSummary sha1|md5 <expectedHashes>
+# Usage: printHashSummary sha1|md5|sha512 <expectedHashes>
 printHashSummary() {
   local type=${1,,}
   local expected=$2
@@ -104,7 +104,7 @@ verifyHashes() {
   local filecount=$1
   local file type
   local files
-  readarray -t files < <(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.asc' \! -name 'robots.txt' | sort)
+  readarray -t files < <(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.sha512' \! -name '*.asc' \! -name 'robots.txt' | sort)
   for type in md5 sha1; do
     rm -f ${type^^}SUM
     touch ${type^^}SUM
@@ -122,12 +122,16 @@ verifyHashes() {
 verifyDetachedSignatures() {
   local file
   local sigs=$1
-  local goodsigs
-  goodsigs=$(for file in download/**/*.asc; do
+  local gpgoutput
+  gpgoutput=$(for file in download/**/*.asc; do
     gpg --verify "$file"
-  done 2>&1 | sort | uniq -c | grep 'Good signature' | awk '{print $1}')
+  done 2>&1)
+  local goodsigs
+  goodsigs=$(grep -c "Good signature" <<<"$gpgoutput")
   [[ -n $goodsigs ]] || goodsigs=0
-  echo "Verified $(outof "$sigs" "$goodsigs") detached GPG signatures."
+  local fingerprints
+  fingerprints=$(grep "using RSA key" <<<"$gpgoutput" | sort -u | grep -o '\S*$' | paste -sd,)
+  echo "Verified $(outof "$sigs" "$goodsigs") detached GPG signatures $(green "$fingerprints")."
 }
 
 verifyRPMSignatures() {
@@ -173,7 +177,7 @@ verifyJars() {
   for file in "${jars[@]}"; do
     [[ -f "$(dirname "$file")/$(basename "$file" .jar)-sources.jar" ]] || echo -e "Missing -sources.jar for \e[0;31m$file\e[0m"
     [[ -f "$(dirname "$file")/$(basename "$file" .jar)-javadoc.jar" ]] || echo -e "Missing -javadoc.jar for \e[0;31m$file\e[0m"
-    if jar tf "$file" | grep -E -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*|web/.*)$'; then
+    if jar tf "$file" | grep -E -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*)$'; then
       echo "$(red "$(basename "$file")") contains unexpected content."
     fi
     if rm -rf META-INF && jar xf "$file" $m && dos2unix $m &>/dev/null; then
@@ -227,10 +231,8 @@ verifySourceTarball() {
     cd git-export &&
     git checkout -b "$branch"-test origin/"$branch" &&
     rm -rf .git .github/ .asf.yaml &&
-    cd ..
-  # for some reason, .gitignore files are being left in the tarball
-  # && cd .. \
-  # && find git-export -type f -name '.gitignore' -exec rm -f {} \;
+    cd .. &&
+    find git-export -type f -name '.gitignore' -exec rm -f {} \;
   echo "Comparing the following git branch to the source tarball:"
   git --git-dir=git log --graph -n1 --color --decorate "$branch"-test | head -1
   local head
@@ -308,7 +310,7 @@ verify() {
   local commit=$2
   local testsDir=$3
   local filecount
-  filecount=$(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name 'robots.txt' | wc -l)
+  filecount=$(find download/ -type f \! -name '*.sha1' \! -name '*.md5' \! -name '*.sha512' \! -name 'robots.txt' | wc -l)
   local sigs
   sigs=$(find download/ -type f -name '*.asc' | wc -l)
   local regular=$((filecount - sigs))
@@ -316,6 +318,7 @@ verify() {
   [[ $regular -eq $sigs ]] || color=red
   echo "-----"
   echo "Found $($color "$filecount") files: $($color "$regular") artifacts, $($color "$sigs") detached GPG signatures."
+  echo "Found $(green "$(find download/ -name '*.tar.gz' | wc -l)") tarballs; $(green "$(find download/ -name '*.pom' | wc -l)") poms; $(green "$(find download/ -name '*.jar' | wc -l)") jars."
   echo "-----"
   verifyHashes "$regular"
   echo "-----"
