@@ -195,7 +195,7 @@ verifyJars() {
   for file in "${jars[@]}"; do
     [[ -f "$(dirname "$file")/$(basename "$file" .jar)-sources.jar" ]] || echo -e "Missing -sources.jar for \e[0;31m$file\e[0m"
     [[ -f "$(dirname "$file")/$(basename "$file" .jar)-javadoc.jar" ]] || echo -e "Missing -javadoc.jar for \e[0;31m$file\e[0m"
-    if jar tf "$file" | grep -E -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*|web/.*)$'; then
+    if jar tf "$file" | grep -E -v '^(org/|org/apache/|org/apache/accumulo/.*|META-INF/.*)$'; then
       echo "$(red "$(basename "$file")") contains unexpected content."
     fi
     if rm -rf META-INF && jar xf "$file" $m && dos2unix $m &>/dev/null; then
@@ -252,8 +252,6 @@ verifySourceTarball() {
     git checkout -b "$branch"-test origin/"$branch" &&
     rm -rf .git .github/ .asf.yaml &&
     cd .. &&
-    echo "Removing .settings dirs (can be omitted in future releases)" &&
-    find git-export/modules/example-iterators-{a,b} -depth -type d -name '.settings' -exec rm -rf {} \; &&
     find git-export -type f -name '.gitignore' -exec rm -f {} \;
   echo "Comparing the following git branch to the source tarball:"
   git --git-dir=git log --graph -n1 --color --decorate "$branch"-test | head -1
